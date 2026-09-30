@@ -150,7 +150,6 @@ function renderPapers() {
   const yearOptions = yearsOf(state.papers).map((year) => `<option value="${year}">${year}</option>`).join("");
   app.innerHTML = `
     <h2>论文集</h2>
-    ${uploadPanel()}
     <form class="filters" id="paper-filters">
       <label>关键词
         <input id="keyword" type="search" value="${escapeAttr(state.keyword)}" placeholder="标题、摘要、对象或方法" />
@@ -179,7 +178,8 @@ function renderPapers() {
     <p class="meta-line"><span>共 ${rows.length} 篇${uploadCountLabel()}</span></p>
     <div class="list">
       ${rows.length ? rows.map((paper) => entryCard(paper, paperFields(paper))).join("") : `<p class="empty">没有符合条件的论文。</p>`}
-    </div>`;
+    </div>
+    ${uploadPanel()}`;
   document.querySelector("#section").value = state.section;
   document.querySelector("#year-from").value = state.yearFrom;
   document.querySelector("#year-to").value = state.yearTo;
@@ -210,7 +210,7 @@ function renderPapers() {
 
 function entryActions(item) {
   const edit = state.view === "papers"
-    ? `<button type="button" class="fav" data-edit="${escapeAttr(item.id)}">编辑</button>`
+    ? `<button type="button" class="edit-btn" data-edit="${escapeAttr(item.id)}">编辑</button>`
     : "";
   const remove = item.local
     ? `<button type="button" class="fav" data-drop-upload="${escapeAttr(item.id)}">移除</button>`
@@ -1142,9 +1142,6 @@ async function start() {
     }
   });
   const backTop = document.querySelector("#back-top");
-  const syncBackTop = () => backTop.classList.toggle("is-on", window.scrollY > 280);
-  window.addEventListener("scroll", syncBackTop, { passive: true });
-  syncBackTop();
   backTop.addEventListener("click", () => {
     backTop.classList.add("is-bounce");
     window.scrollTo({ top: 0, behavior: "smooth" });
