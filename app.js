@@ -35,8 +35,10 @@ const state = {
   favorites: [],
   favKeyword: "",
   basePapers: [],
+  catalog: [],
   uploads: [],
   uploadMessage: "",
+  editingId: "",
 };
 
 const FAV_KEY = "mi-research-favorites";
@@ -99,6 +101,7 @@ function filteredSurveys() {
 }
 
 function entryCard(item, extra) {
+  if (state.view === "papers" && state.editingId === item.id) return editCard(item);
   const section = item.section ? `<span class="tag">${SECTION_LABEL[item.section] || item.section}</span>` : "";
   const title = item.section
     ? item.zh
@@ -197,13 +200,49 @@ function renderPapers() {
     }
   });
   bindUploadPanel();
+  document.querySelectorAll("[data-edit-form]").forEach((form) => {
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      await savePaperEdit(form.dataset.editForm, Object.fromEntries(new FormData(event.target).entries()));
+    });
+  });
 }
 
 function entryActions(item) {
+  const edit = state.view === "papers"
+    ? `<button type="button" class="fav" data-edit="${escapeAttr(item.id)}">编辑</button>`
+    : "";
   const remove = item.local
     ? `<button type="button" class="fav" data-drop-upload="${escapeAttr(item.id)}">移除</button>`
     : "";
-  return `<div class="entry-actions">${remove}${favoriteButton(item.id)}</div>`;
+  return `<div class="entry-actions">${edit}${remove}${favoriteButton(item.id)}</div>`;
+}
+
+function editCard(item) {
+  const options = [
+    ["上传论文", "上传论文"],
+    ["Logic and Reasoning", "逻辑与推理"],
+    ["Knowledge Management", "知识管理"],
+  ].map(([value, label]) => `<option value="${escapeAttr(value)}"${item.section === value ? " selected" : ""}>${label}</option>`).join("");
+  return `
+    <article class="entry">
+      <form class="upload-form" data-edit-form="${escapeAttr(item.id)}">
+        <label>中文标题<input name="zh" value="${escapeAttr(item.zh)}" placeholder="与英文标题至少填一个" /></label>
+        <label>英文标题<input name="en" value="${escapeAttr(item.en)}" /></label>
+        <label>年份<input name="year" type="number" min="1900" max="2100" required value="${escapeAttr(item.year)}" /></label>
+        <label>会议 / 来源<input name="venue" value="${escapeAttr(item.venue)}" /></label>
+        <label>主题<select name="section">${options}</select></label>
+        <label>链接<input name="url" type="url" value="${escapeAttr(item.url)}" placeholder="https://" /></label>
+        <label class="wide">摘要<textarea name="abs" rows="3">${escapeHtml(item.abs)}</textarea></label>
+        <label>研究对象<input name="object" value="${escapeAttr(item.object)}" /></label>
+        <label>定位方法<input name="loc" value="${escapeAttr(item.loc)}" /></label>
+        <label>操控方法<input name="steer" value="${escapeAttr(item.steer)}" /></label>
+        <div class="entry-actions wide">
+          <button type="submit">保存修改</button>
+          <button type="button" class="fav" data-cancel-edit>取消</button>
+        </div>
+      </form>
+    </article>`;
 }
 
 function uploadPanel() {
@@ -394,16 +433,49 @@ async function loadCloudUploads() {
   query.order("-createdAt");
   const data = await query.find();
   const rows = Array.isArray(data) ? data : (data.results || []);
-  return rows.map(fromCloud).filter((paper) => paper.zh && paper.year);
+  const uploads = [];
+  const overrides = new Map();
+  rows.forEach((row) => {
+    const paper = fromCloud(row);
+    if (!paper.zh || !paper.year) return;
+    if (row.baseId && state.catalog.some((item) => item.id === row.baseId)) {
+      overrides.set(row.baseId, { objectId: row.objectId, fields: paper });
+      return;
+    }
+    uploads.push(paper);
+  });
+  state.basePapers = state.catalog.map((paper) => {
+    const over = overrides.get(paper.id);
+    if (!over) return { ...paper };
+    return {
+      ...paper,
+      ...over.fields,
+      id: paper.id,
+      local: false,
+      overrideId: over.objectId,
+    };
+  });
+  return uploads;
 }
 
 async function saveCloudPaper(paper) {
   await ensureBmob();
   const query = Bmob.Query("Paper");
   Object.entries(cloudBody(paper)).forEach(([key, value]) => query.set(key, value));
-  query.set("ACL", { "*": { read: true } });
+  if (paper.baseId) query.set("baseId", paper.baseId);
+  query.set("ACL", { "*": { read: true, write: true } });
   const saved = await query.save();
   return saved.objectId;
+}
+
+async function updateCloudPaper(objectId, paper) {
+  await ensureBmob();
+  const query = Bmob.Query("Paper");
+  query.set("id", objectId);
+  Object.entries(cloudBody(paper)).forEach(([key, value]) => query.set(key, value));
+  if (paper.baseId) query.set("baseId", paper.baseId);
+  query.set("ACL", { "*": { read: true, write: true } });
+  await query.save();
 }
 
 function loadUploads() {
@@ -467,6 +539,71 @@ async function ingestPapers(list) {
   if (added.length && !cloudReady()) saveUploads();
   if (added.length) mergePapers();
   return added;
+}
+
+function paperFromFields(raw) {
+  const zh = fieldOf(raw, ["zh", "中文标题", "标题"]);
+  const en = fieldOf(raw, ["en", "英文标题"]);
+  if (!zh && !en) return null;
+  const year = Number(fieldOf(raw, ["year", "年份", "年"]));
+  if (!year || year < 1900 || year > 2100) return null;
+  const sectionName = fieldOf(raw, ["section", "主题"]) || "上传论文";
+  return {
+    section: SECTION_FROM[sectionName] || "上传论文",
+    year,
+    venue: fieldOf(raw, ["venue", "会议/来源", "会议", "来源"]) || "未填写",
+    en: en || zh,
+    zh: zh || en,
+    abs: fieldOf(raw, ["abs", "摘要"]),
+    object: fieldOf(raw, ["object", "研究对象", "研究对象 Object"]) || "未填写",
+    loc: fieldOf(raw, ["loc", "定位方法", "定位方法 Localizing Method"]) || "未填写",
+    steer: fieldOf(raw, ["steer", "操控方法", "操控方法 Steering Method"]) || "未填写",
+    url: fieldOf(raw, ["url", "链接"]),
+  };
+}
+
+async function savePaperEdit(id, raw) {
+  const current = state.papers.find((paper) => paper.id === id);
+  const fields = paperFromFields(raw);
+  if (!current || !fields) {
+    state.uploadMessage = "中文标题和英文标题至少填一个，年份需在 1900 到 2100 之间。";
+    render();
+    return;
+  }
+  const cloudPaper = { ...fields, baseId: current.local ? "" : current.id };
+  try {
+    if (cloudReady() && current.local && !String(current.id).startsWith("up-")) {
+      await updateCloudPaper(current.id, fields);
+    } else if (cloudReady() && current.overrideId) {
+      await updateCloudPaper(current.overrideId, cloudPaper);
+    } else if (cloudReady() && !current.local) {
+      current.overrideId = await saveCloudPaper(cloudPaper);
+    } else if (current.local) {
+      const index = state.uploads.findIndex((paper) => paper.id === id);
+      if (index >= 0) state.uploads[index] = { ...state.uploads[index], ...fields };
+      saveUploads();
+    } else {
+      state.uploadMessage = "Bmob 还没填好，内置论文的修改无法保存。";
+      render();
+      return;
+    }
+  } catch (error) {
+    state.uploadMessage = `修改没有保存：${cloudErrorMessage(error)}。较早上传的只读记录需要先在 Bmob 控制台删掉后重新上传。`;
+    render();
+    return;
+  }
+  Object.assign(current, fields);
+  if (current.local) {
+    const index = state.uploads.findIndex((paper) => paper.id === id);
+    if (index >= 0) Object.assign(state.uploads[index], fields);
+  } else {
+    const index = state.basePapers.findIndex((paper) => paper.id === id);
+    if (index >= 0) Object.assign(state.basePapers[index], fields, { overrideId: current.overrideId });
+  }
+  mergePapers();
+  state.editingId = "";
+  state.uploadMessage = `已保存「${fields.zh}」的修改。`;
+  render();
 }
 
 function normalizeUpload(raw) {
@@ -981,7 +1118,8 @@ async function start() {
     app.innerHTML = `<p class="empty">页面数据没有加载成功。</p>`;
     return;
   }
-  state.basePapers = library.papers;
+  state.catalog = library.papers.map((paper) => ({ ...paper }));
+  state.basePapers = state.catalog.map((paper) => ({ ...paper }));
   state.uploads = cloudReady() ? [] : loadUploads();
   mergePapers();
   state.surveys = library.surveys;
@@ -992,7 +1130,26 @@ async function start() {
     if (button && app.contains(button)) toggleFavorite(button.dataset.fav);
     const remove = event.target.closest("[data-drop-upload]");
     if (remove && app.contains(remove)) dropUpload(remove.dataset.dropUpload);
+    const edit = event.target.closest("[data-edit]");
+    if (edit && app.contains(edit)) {
+      state.editingId = edit.dataset.edit;
+      render();
+    }
+    const cancel = event.target.closest("[data-cancel-edit]");
+    if (cancel && app.contains(cancel)) {
+      state.editingId = "";
+      render();
+    }
   });
+  const backTop = document.querySelector("#back-top");
+  const syncBackTop = () => backTop.classList.toggle("is-on", window.scrollY > 280);
+  window.addEventListener("scroll", syncBackTop, { passive: true });
+  syncBackTop();
+  backTop.addEventListener("click", () => {
+    backTop.classList.add("is-bounce");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+  backTop.addEventListener("animationend", () => backTop.classList.remove("is-bounce"));
   window.addEventListener("hashchange", render);
   render();
   if (!cloudReady()) return;
