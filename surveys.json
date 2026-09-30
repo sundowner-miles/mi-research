@@ -1,0 +1,38 @@
+[
+  {
+    "id": "sv-01",
+    "year": 2024,
+    "venue": "arXiv",
+    "en": "Mechanistic Interpretability for AI Safety: A Review",
+    "zh": "面向人工智能安全的机制可解释性综述",
+    "abs": "Bereska 与 Gavves 2024 年的全景综述。笔记中的定位是：标题挂在人工智能安全上，实质是机制可解释性综述，对底层定义和假说写得很细。全文按「范式定位、基础理论、方法工具、研究现状、安全价值、挑战与未来」推进，把机制可解释性定义为对神经网络做逆向工程，把学到的计算与表征转成可理解的算法和概念。",
+    "url": "https://doi.org/10.48550/arXiv.2404.14082"
+  },
+  {
+    "id": "sv-02",
+    "year": 2024,
+    "venue": "arXiv",
+    "en": "A Practical Review of Mechanistic Interpretability for Transformer-Based Language Models",
+    "zh": "面向 Transformer 语言模型的机制可解释性实用综述",
+    "abs": "Rai 等人 2024 年的入门向综述。笔记里把它看作适合新手的指南：用任务中心而不是技术中心来组织，把研究拆成特征、电路和普遍性三类，并为每类任务配了可执行的新手路线图，从问题定义走到实验落地。",
+    "url": "https://arxiv.org/abs/2407.02646"
+  },
+  {
+    "id": "sv-03",
+    "year": 2026,
+    "venue": "ACM Computing Surveys",
+    "en": "Bridging the Black Box: A Survey on Mechanistic Interpretability in AI",
+    "zh": "跨越黑箱：人工智能中的机制可解释性综述",
+    "abs": "Somvanshi 等人 2026 年发表于 ACM Computing Surveys 的综述，覆盖语言、视觉和多模态。笔记中的概括是：提出「三层抽象粒度加三类评价范式」的分类框架，并补充了开源工具和具体应用案例，方法与工程实践的色彩更重。",
+    "url": "https://doi.org/10.1145/3787104"
+  },
+  {
+    "id": "sv-04",
+    "year": 2026,
+    "venue": "arXiv",
+    "en": "Locate, Steer, and Improve: A Practical Survey of Actionable Mechanistic Interpretability in Large Language Models",
+    "zh": "定位、引导与改进：大语言模型中可操作机制可解释性实用综述",
+    "abs": "Zhang 等人 2026 年的工程落地向综述。笔记中的定位是行动导向：用「定位、引导、改进」把机制可解释性从观察变成可干预的流程。本站逻辑与推理、知识管理两部分论文表即来自这篇综述的配套列表。",
+    "url": "https://doi.org/10.48550/arXiv.2601.14004"
+  }
+]
