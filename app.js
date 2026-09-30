@@ -307,9 +307,9 @@ function downloadTemplate() {
 
 function uploadIntro() {
   if (cloudReady()) {
-    return "选择 JSON 文件，或在下面填写一篇。新论文保存到 LeanCloud，打开这个网站的人都能看到，也可以检索和收藏。思路图不会自动给它们归类。";
+    return "选择 JSON 文件，或在下面填写一篇。新论文保存到 Bmob，打开这个网站的人都能看到，也可以检索和收藏。思路图不会自动给它们归类。";
   }
-  return "选择 JSON 文件，或在下面填写一篇。LeanCloud 还没填好时，新论文只保存在这台浏览器。思路图不会自动给它们归类。";
+  return "选择 JSON 文件，或在下面填写一篇。Bmob 还没填好时，新论文只保存在这台浏览器。思路图不会自动给它们归类。";
 }
 
 function uploadCountLabel() {
@@ -318,27 +318,40 @@ function uploadCountLabel() {
 }
 
 function cloudReady() {
-  const config = window.LEANCLOUD || {};
-  return Boolean(String(config.appId || "").trim() && String(config.appKey || "").trim() && String(config.serverURL || "").trim());
+  const config = window.BMOB || {};
+  return Boolean(String(config.applicationId || "").trim() && String(config.restApiKey || "").trim());
 }
 
-function cloudBase() {
-  return String(window.LEANCLOUD.serverURL).trim().replace(/\/$/, "");
+let bmobReady = null;
+
+function ensureBmob() {
+  if (window.Bmob) {
+    Bmob.initialize(String(window.BMOB.applicationId).trim(), String(window.BMOB.restApiKey).trim());
+    return Promise.resolve();
+  }
+  if (!bmobReady) {
+    bmobReady = new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = "vendor/bmob.min.js";
+      script.onload = () => {
+        if (!window.Bmob) {
+          reject(new Error("Bmob SDK 没有加载成功"));
+          return;
+        }
+        Bmob.initialize(String(window.BMOB.applicationId).trim(), String(window.BMOB.restApiKey).trim());
+        resolve();
+      };
+      script.onerror = () => reject(new Error("Bmob SDK 没有加载成功"));
+      document.head.appendChild(script);
+    });
+  }
+  return bmobReady;
 }
 
-async function cloudRequest(path, options = {}) {
-  const response = await fetch(`${cloudBase()}${path}`, {
-    method: options.method || "GET",
-    headers: {
-      "X-LC-Id": String(window.LEANCLOUD.appId).trim(),
-      "X-LC-Key": String(window.LEANCLOUD.appKey).trim(),
-      "Content-Type": "application/json",
-    },
-    body: options.body,
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || `请求失败（${response.status}）`);
-  return data;
+function cloudErrorMessage(error) {
+  if (!error) return "未知错误";
+  const text = error.error || error.message || String(error);
+  return error.code ? `${text}（${error.code}）` : text;
 }
 
 function cloudBody(paper) {
@@ -375,8 +388,22 @@ function fromCloud(row) {
 }
 
 async function loadCloudUploads() {
-  const data = await cloudRequest("/1.1/classes/Paper?limit=1000&order=-createdAt");
-  return (data.results || []).map(fromCloud).filter((paper) => paper.zh && paper.year);
+  await ensureBmob();
+  const query = Bmob.Query("Paper");
+  query.limit(1000);
+  query.order("-createdAt");
+  const data = await query.find();
+  const rows = Array.isArray(data) ? data : (data.results || []);
+  return rows.map(fromCloud).filter((paper) => paper.zh && paper.year);
+}
+
+async function saveCloudPaper(paper) {
+  await ensureBmob();
+  const query = Bmob.Query("Paper");
+  Object.entries(cloudBody(paper)).forEach(([key, value]) => query.set(key, value));
+  query.set("ACL", { "*": { read: true } });
+  const saved = await query.save();
+  return saved.objectId;
 }
 
 function loadUploads() {
@@ -428,13 +455,9 @@ async function ingestPapers(list) {
     if (!paper || isDuplicatePaper(paper)) continue;
     if (cloudReady()) {
       try {
-        const saved = await cloudRequest("/1.1/classes/Paper", {
-          method: "POST",
-          body: JSON.stringify(cloudBody(paper)),
-        });
-        paper.id = saved.objectId;
+        paper.id = await saveCloudPaper(paper);
       } catch (error) {
-        state.uploadMessage = `保存到 LeanCloud 失败：${error.message}`;
+        state.uploadMessage = `保存到 Bmob 失败：${cloudErrorMessage(error)}`;
         break;
       }
     }
@@ -477,9 +500,10 @@ function normalizeUpload(raw) {
 async function dropUpload(id) {
   if (cloudReady()) {
     try {
-      await cloudRequest(`/1.1/classes/Paper/${encodeURIComponent(id)}`, { method: "DELETE" });
+      await ensureBmob();
+      await Bmob.Query("Paper").destroy(id);
     } catch (error) {
-      state.uploadMessage = "LeanCloud 没有允许删除。请到控制台删除这条记录，或把 Paper 的 delete 权限开放给所有用户。";
+      state.uploadMessage = `Bmob 没有允许删除：${cloudErrorMessage(error)}。请到控制台删除这条记录。`;
       render();
       return;
     }
@@ -489,7 +513,7 @@ async function dropUpload(id) {
   if (!cloudReady()) saveUploads();
   saveFavorites();
   mergePapers();
-  state.uploadMessage = cloudReady() ? "已从 LeanCloud 移除这篇论文。" : "已移除这篇本地论文。";
+  state.uploadMessage = cloudReady() ? "已从 Bmob 移除这篇论文。" : "已移除这篇本地论文。";
   render();
 }
 
@@ -976,7 +1000,7 @@ async function start() {
     state.uploads = await loadCloudUploads();
     mergePapers();
   } catch (error) {
-    state.uploadMessage = `暂时读不到 LeanCloud：${error.message}`;
+    state.uploadMessage = `暂时读不到 Bmob：${cloudErrorMessage(error)}`;
   }
   render();
 }
