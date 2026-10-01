@@ -184,20 +184,13 @@ function renderPapers() {
   document.querySelector("#year-from").value = state.yearFrom;
   document.querySelector("#year-to").value = state.yearTo;
   document.querySelector("#sort").value = state.sort;
-  document.querySelector("#paper-filters").addEventListener("input", (event) => {
+  bindFilterForm(document.querySelector("#paper-filters"), (event) => {
     const id = event.target.id;
     if (id === "keyword") state.keyword = event.target.value;
     if (id === "section") state.section = event.target.value;
     if (id === "year-from") state.yearFrom = event.target.value;
     if (id === "year-to") state.yearTo = event.target.value;
     if (id === "sort") state.sort = event.target.value;
-    const caret = id === "keyword" ? event.target.selectionStart : null;
-    render();
-    if (caret !== null) {
-      const input = document.querySelector("#keyword");
-      input.focus();
-      input.setSelectionRange(caret, caret);
-    }
   });
   bindUploadPanel();
   document.querySelectorAll("[data-edit-form]").forEach((form) => {
@@ -673,16 +666,9 @@ function renderSurveys() {
     </div>`;
   const yearSelect = document.querySelector("#survey-year");
   if (yearSelect) yearSelect.value = state.surveyYear;
-  document.querySelector("#survey-filters").addEventListener("input", (event) => {
+  bindFilterForm(document.querySelector("#survey-filters"), (event) => {
     if (event.target.id === "survey-keyword") state.surveyKeyword = event.target.value;
     if (event.target.id === "survey-year") state.surveyYear = event.target.value;
-    const caret = event.target.id === "survey-keyword" ? event.target.selectionStart : null;
-    render();
-    if (caret !== null) {
-      const input = document.querySelector("#survey-keyword");
-      input.focus();
-      input.setSelectionRange(caret, caret);
-    }
   });
 }
 
@@ -737,19 +723,40 @@ function renderGroup() {
   document.querySelector("#group-year-from").value = state.groupYearFrom;
   document.querySelector("#group-year-to").value = state.groupYearTo;
   document.querySelector("#group-sort").value = state.groupSort;
-  document.querySelector("#group-filters").addEventListener("input", (event) => {
+  bindFilterForm(document.querySelector("#group-filters"), (event) => {
     const id = event.target.id;
     if (id === "group-keyword") state.groupKeyword = event.target.value;
     if (id === "group-year-from") state.groupYearFrom = event.target.value;
     if (id === "group-year-to") state.groupYearTo = event.target.value;
     if (id === "group-sort") state.groupSort = event.target.value;
-    const caret = id === "group-keyword" ? event.target.selectionStart : null;
+  });
+}
+
+function bindFilterForm(form, apply) {
+  if (!form) return;
+  const refresh = (event) => {
+    apply(event);
+    const field = event.target;
+    const caret = field && (field.type === "search" || field.type === "text") ? field.selectionStart : null;
+    const fieldId = field && field.id;
     render();
-    if (caret !== null) {
-      const input = document.querySelector("#group-keyword");
-      input.focus();
-      input.setSelectionRange(caret, caret);
-    }
+    if (caret === null || !fieldId) return;
+    const input = document.querySelector("#" + CSS.escape(fieldId));
+    if (!input) return;
+    input.focus();
+    const next = Math.min(caret, input.value.length);
+    input.setSelectionRange(next, next);
+  };
+  form.addEventListener("compositionstart", (event) => {
+    event.target.composing = true;
+  });
+  form.addEventListener("compositionend", (event) => {
+    event.target.composing = false;
+    refresh(event);
+  });
+  form.addEventListener("input", (event) => {
+    if (event.isComposing || event.target.composing) return;
+    refresh(event);
   });
 }
 
@@ -1077,16 +1084,9 @@ function renderFavorites() {
     <div class="list">
       ${rows.length ? rows.map((paper) => entryCard(paper, paperFields(paper))).join("") : `<p class="empty">${state.favorites.length ? "没有符合条件的收藏。" : "还没有收藏。在论文集、组会汇总或思路图里点「收藏」。"}</p>`}
     </div>`;
-  document.querySelector("#fav-filters").addEventListener("input", (event) => {
+  bindFilterForm(document.querySelector("#fav-filters"), (event) => {
     if (event.target.id !== "fav-keyword") return;
     state.favKeyword = event.target.value;
-    const caret = event.target.selectionStart;
-    render();
-    const input = document.querySelector("#fav-keyword");
-    if (input && caret !== null) {
-      input.focus();
-      input.setSelectionRange(caret, caret);
-    }
   });
 }
 
