@@ -191,7 +191,7 @@ function renderPapers() {
     if (id === "year-from") state.yearFrom = event.target.value;
     if (id === "year-to") state.yearTo = event.target.value;
     if (id === "sort") state.sort = event.target.value;
-  });
+  }, paintPaperResults);
   bindUploadPanel();
   document.querySelectorAll("[data-edit-form]").forEach((form) => {
     form.addEventListener("submit", async (event) => {
@@ -669,7 +669,7 @@ function renderSurveys() {
   bindFilterForm(document.querySelector("#survey-filters"), (event) => {
     if (event.target.id === "survey-keyword") state.surveyKeyword = event.target.value;
     if (event.target.id === "survey-year") state.surveyYear = event.target.value;
-  });
+  }, paintSurveyResults);
 }
 
 function renderSurveyDetail(id) {
@@ -729,34 +729,65 @@ function renderGroup() {
     if (id === "group-year-from") state.groupYearFrom = event.target.value;
     if (id === "group-year-to") state.groupYearTo = event.target.value;
     if (id === "group-sort") state.groupSort = event.target.value;
+  }, paintGroupResults);
+}
+
+function paintResults(metaHtml, listHtml) {
+  const meta = document.querySelector("#app .meta-line");
+  const list = document.querySelector("#app .list");
+  if (meta) meta.innerHTML = metaHtml;
+  if (list) list.innerHTML = listHtml;
+}
+
+function paintPaperResults() {
+  const rows = filteredPapers();
+  paintResults(
+    `<span>共 ${rows.length} 篇${uploadCountLabel()}</span>`,
+    rows.length ? rows.map((paper) => entryCard(paper, paperFields(paper))).join("") : `<p class="empty">没有符合条件的论文。</p>`
+  );
+  document.querySelectorAll("[data-edit-form]").forEach((form) => {
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      await savePaperEdit(form.dataset.editForm, Object.fromEntries(new FormData(event.target).entries()));
+    });
   });
 }
 
-function bindFilterForm(form, apply) {
+function paintSurveyResults() {
+  const rows = filteredSurveys();
+  paintResults(
+    `<span>共 ${rows.length} 篇</span>`,
+    rows.length ? rows.map((item) => entryCard(item)).join("") : `<p class="empty">没有符合条件的综述。</p>`
+  );
+}
+
+function paintGroupResults() {
+  const rows = filteredGroup();
+  paintResults(
+    `<span>共 ${rows.length} 篇</span>`,
+    rows.length ? rows.map((paper) => entryCard(paper, paperFields(paper))).join("") : `<p class="empty">没有符合条件的论文。</p>`
+  );
+}
+
+function paintFavoriteResults() {
+  const rows = favoritePapers();
+  paintResults(
+    `<span>共 ${rows.length} 篇</span>`,
+    rows.length ? rows.map((paper) => entryCard(paper, paperFields(paper))).join("") : `<p class="empty">${state.favorites.length ? "没有符合条件的收藏。" : "还没有收藏。在论文集、组会汇总或思路图里点「收藏」。"}</p>`
+  );
+}
+
+function bindFilterForm(form, apply, paintList) {
   if (!form) return;
-  const refresh = (event) => {
+  form.addEventListener("input", (event) => {
     apply(event);
     const field = event.target;
-    const caret = field && (field.type === "search" || field.type === "text") ? field.selectionStart : null;
-    const fieldId = field && field.id;
+    const typing = field && field.tagName === "INPUT";
+    if (typing && paintList) {
+      paintList();
+      return;
+    }
     render();
-    if (caret === null || !fieldId) return;
-    const input = document.querySelector("#" + CSS.escape(fieldId));
-    if (!input) return;
-    input.focus();
-    const next = Math.min(caret, input.value.length);
-    input.setSelectionRange(next, next);
-  };
-  form.addEventListener("compositionstart", (event) => {
-    event.target.composing = true;
-  });
-  form.addEventListener("compositionend", (event) => {
-    event.target.composing = false;
-    refresh(event);
-  });
-  form.addEventListener("input", (event) => {
-    if (event.isComposing || event.target.composing) return;
-    refresh(event);
   });
 }
 
@@ -1087,7 +1118,7 @@ function renderFavorites() {
   bindFilterForm(document.querySelector("#fav-filters"), (event) => {
     if (event.target.id !== "fav-keyword") return;
     state.favKeyword = event.target.value;
-  });
+  }, paintFavoriteResults);
 }
 
 function render() {
